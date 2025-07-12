@@ -4,9 +4,6 @@ from scipy.optimize import linprog
 from copy import deepcopy
 import math
 
-# Função para ler o problema do arquivo de entrada
-# Retorna: dicionário de variáveis, tipo do objetivo, dicionário do objetivo e lista de restrições
-
 def ler_problema(caminho_arquivo):
     with open(caminho_arquivo, 'r') as f:
         linhas = f.read().strip().split(';')
@@ -20,7 +17,7 @@ def ler_problema(caminho_arquivo):
         linha = linha.strip()
         if not linha or linha.startswith('//'):
             continue
-        # Identifica declaração de variável
+        ## acha a declaração de variável
         if linha.startswith('var'):
             partes = linha.replace('var ', '').split()
             nome = partes[0]
@@ -34,7 +31,7 @@ def ler_problema(caminho_arquivo):
                 limite = '<=0'
             variaveis[nome] = {'tipo': tipo, 'limite': limite}
 
-        # Identifica função objetivo
+        ## acha a função objetivo
         elif linha.startswith('maximize') or linha.startswith('minimize'):
             if linha.startswith('maximize'):
                 objetivo_tipo = 'max'
@@ -55,7 +52,7 @@ def ler_problema(caminho_arquivo):
                     var = partes_termo[0]
                     objetivo[var.strip()] = 1.0
 
-        # Identifica restrições
+        ## acha as restrições
         elif linha.startswith('subject to'):
             conteudo = linha.split(':')[1].strip()
             if '<=' in conteudo:
@@ -89,9 +86,6 @@ def ler_problema(caminho_arquivo):
     print("Variáveis lidas:", variaveis)
     return variaveis, objetivo_tipo, objetivo, restricoes
 
-# Monta o problema no formato aceito pelo linprog
-# Retorna: nomes das variáveis, coeficientes do objetivo, restrições, bounds
-
 def montar_lp(variaveis, objetivo_tipo, objetivo, restricoes):
     nomes = []
     for var in variaveis:
@@ -102,7 +96,6 @@ def montar_lp(variaveis, objetivo_tipo, objetivo, restricoes):
             c.append(objetivo[var])
         else:
             c.append(0)
-    # linprog minimiza, então inverte sinal se for maximização
     if objetivo_tipo == 'max':
         for i in range(len(c)):
             c[i] = -c[i]
@@ -157,7 +150,6 @@ def montar_lp(variaveis, objetivo_tipo, objetivo, restricoes):
 
     return nomes, c, A_ub_final, b_ub_final, A_eq_final, b_eq_final, bounds
 
-# Verifica se a solução encontrada é inteira para as variáveis inteiras
 
 def eh_solucao_inteira(solucao, variaveis, nomes):
     for i in range(len(nomes)):
@@ -167,12 +159,10 @@ def eh_solucao_inteira(solucao, variaveis, nomes):
                 return False
     return True
 
-# Algoritmo principal Branch and Bound
-# Resolve o problema inteiro, ramificando e podando conforme necessário
 
 def branch_and_bound(variaveis, objetivo_tipo, objetivo, restricoes):
     inicio = time.time()
-    fila = [([], [])]  # Cada item: (restrições adicionais, histórico de ramificações)
+    fila = [([], [])] 
     if objetivo_tipo == 'max':
         melhor_valor = float('-inf')
     else:
@@ -180,9 +170,9 @@ def branch_and_bound(variaveis, objetivo_tipo, objetivo, restricoes):
     melhor_solucao = None
     iteracao = 0
     restricoes_originais = restricoes.copy()
-    encontrou_ilimitado = False  # Flag para detectar se algum nó foi ilimitado
+    encontrou_ilimitado = False  
 
-    # Verifica se o relaxamento contínuo já é ilimitado antes de iniciar o branch and bound
+    ## serve para verificar se a solução é inteira
     nomes, c, A_ub, b_ub, A_eq, b_eq, bounds = montar_lp(variaveis, objetivo_tipo, objetivo, restricoes)
     resultado_relax = linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
     if resultado_relax.status == 3:
@@ -190,7 +180,7 @@ def branch_and_bound(variaveis, objetivo_tipo, objetivo, restricoes):
         return
 
     while len(fila) > 0:
-        restricoes_atual, historico = fila.pop()  # PILHA (DFS)
+        restricoes_atual, historico = fila.pop()  ## faz pilha DFS
         nomes, c, A_ub, b_ub, A_eq, b_eq, bounds = montar_lp(
             variaveis, objetivo_tipo, objetivo, restricoes_originais + restricoes_atual
         )
@@ -204,7 +194,7 @@ def branch_and_bound(variaveis, objetivo_tipo, objetivo, restricoes):
             z_lp = '---'
         elif resultado.status == 3:
             acao = 'L'  # Ilimitado
-            encontrou_ilimitado = True  # Marca que encontrou ilimitado
+            encontrou_ilimitado = True  
             z_lp = '---'
         else:
             solucao = resultado.x
@@ -214,22 +204,20 @@ def branch_and_bound(variaveis, objetivo_tipo, objetivo, restricoes):
                 valor_obj = resultado.fun
             z_lp = "{:.4f}".format(valor_obj)
 
-            # Poda por bound ANTES de ramificar
             if melhor_solucao is not None:
                 if (objetivo_tipo == 'max' and valor_obj <= melhor_valor + 1e-5) or \
                    (objetivo_tipo == 'min' and valor_obj >= melhor_valor - 1e-5):
-                    acao = 'P'  # Podado por bound
+                    acao = 'P' ## Podado
                     z_lp = "{:.4f}".format(valor_obj)
                     marcador = ''
                     print("{:03d} | avaliados: {:02d} | fila: {:02d} | z (LP): {} | acao: {} | z* = {} | tempo: {:.4f}s".format(
                         iteracao, iteracao, len(fila), z_lp, acao, melhor_valor, tempo))
                     continue
 
-            # Checa se a solução é inteira
             if eh_solucao_inteira(solucao, variaveis, nomes):
                 viavel = True
                 todas_restricoes = restricoes_originais + restricoes_atual
-                # Confere viabilidade em todas as restrições
+                ## olha a viabilidade em todas as restrições
                 for restricao, tipo, valor in todas_restricoes:
                     soma = 0
                     for var, coef in restricao.items():
@@ -244,22 +232,20 @@ def branch_and_bound(variaveis, objetivo_tipo, objetivo, restricoes):
                         viavel = False
                         break
                 if viavel:
-                    # Atualiza melhor solução se for melhor
                     if (objetivo_tipo == 'max' and valor_obj > melhor_valor) or (objetivo_tipo == 'min' and valor_obj < melhor_valor):
                         melhor_valor = valor_obj
                         melhor_solucao = solucao.copy()
-                        acao = 'O'  # Ótima
+                        acao = 'O'  ## Otima
                         marcador = '*'
                     else:
                         acao = 'O'
                         marcador = ''
                 else:
-                    acao = 'I'  # Inviável
+                    acao = 'I'  ## Inviável
                     z_lp = '---'
             else:
-                acao = 'D'  # Deve ramificar
+                acao = 'D'  ## para ramificar
                 marcador = ''
-                # Escolhe a variável mais fracionária para ramificar
                 max_frac = 0
                 idx_frac = -1
                 for i in range(len(nomes)):
@@ -274,7 +260,7 @@ def branch_and_bound(variaveis, objetivo_tipo, objetivo, restricoes):
                     val = solucao[idx_frac]
                     lim_inf = math.floor(val)
                     lim_sup = math.ceil(val)
-                    # Só ramifica se realmente há espaço entre os limites
+                    ## Só ramifica se realmente há espaço entre os limites
                     if lim_inf < lim_sup:
                         # Se a variável é binária, só faz sentido ramificar para 0 ou 1
                         if variaveis[var]['limite'] == '>=0' and lim_sup == 1 and lim_inf == 0:
@@ -297,23 +283,19 @@ def branch_and_bound(variaveis, objetivo_tipo, objetivo, restricoes):
         else:
             z_melhor = "---"
 
-        # Exibe o status da iteração
         print("{:03d} | avaliados: {:02d} | fila: {:02d} | z (LP): {} | acao: {} | z* = {} | tempo: {:.4f}s".format(
             iteracao, iteracao, len(fila), z_lp, acao, z_melhor, tempo))
 
-    # Impressão final da solução
     if melhor_solucao is not None:
         print("\nSolução ótima encontrada: z = {:.4f}".format(melhor_valor))
         for i in range(len(nomes)):
             print("{} = {}".format(nomes[i], round(melhor_solucao[i], 4)))
     else:
-        # Usa a flag para decidir a mensagem
         if encontrou_ilimitado:
             print("\nProblema ilimitado")
         else:
             print("\nProblema inviável")
 
-# Execução principal do script
 if __name__ == '__main__':
     if len(sys.argv) != 2:
         print("Uso: python main.py caminho/para/arquivo.txt")
