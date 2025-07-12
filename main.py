@@ -180,6 +180,14 @@ def branch_and_bound(variaveis, objetivo_tipo, objetivo, restricoes):
     melhor_solucao = None
     iteracao = 0
     restricoes_originais = restricoes.copy()
+    encontrou_ilimitado = False  # Flag para detectar se algum nó foi ilimitado
+
+    # Verifica se o relaxamento contínuo já é ilimitado antes de iniciar o branch and bound
+    nomes, c, A_ub, b_ub, A_eq, b_eq, bounds = montar_lp(variaveis, objetivo_tipo, objetivo, restricoes)
+    resultado_relax = linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+    if resultado_relax.status == 3:
+        print("\nProblema ilimitado")
+        return
 
     while len(fila) > 0:
         restricoes_atual, historico = fila.pop()  # PILHA (DFS)
@@ -196,6 +204,7 @@ def branch_and_bound(variaveis, objetivo_tipo, objetivo, restricoes):
             z_lp = '---'
         elif resultado.status == 3:
             acao = 'L'  # Ilimitado
+            encontrou_ilimitado = True  # Marca que encontrou ilimitado
             z_lp = '---'
         else:
             solucao = resultado.x
@@ -298,7 +307,11 @@ def branch_and_bound(variaveis, objetivo_tipo, objetivo, restricoes):
         for i in range(len(nomes)):
             print("{} = {}".format(nomes[i], round(melhor_solucao[i], 4)))
     else:
-        print("\nProblema inviável ou solução ilimitada")
+        # Usa a flag para decidir a mensagem
+        if encontrou_ilimitado:
+            print("\nProblema ilimitado")
+        else:
+            print("\nProblema inviável")
 
 # Execução principal do script
 if __name__ == '__main__':
